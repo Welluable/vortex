@@ -1,65 +1,171 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useRef, useEffect, type FormEvent } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Avatar } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
+import { Send, Bot, User, Sparkles } from "lucide-react";
+
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+}
+
+export default function ChatPage() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: input.trim(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsLoading(true);
+
+    // Simulate an assistant response (no backend yet)
+    setTimeout(() => {
+      const assistantMessage: Message = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content:
+          "This is a placeholder response. Connect a backend API route with the Vercel AI SDK to enable real AI responses.",
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+      setIsLoading(false);
+    }, 1000);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="flex flex-1 flex-col items-center">
+      <div className="flex w-full max-w-3xl flex-1 flex-col">
+        {messages.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <ScrollArea className="flex-1 px-4" ref={scrollRef}>
+            <div className="space-y-6 py-6">
+              {messages.map((message) => (
+                <ChatBubble key={message.id} message={message} />
+              ))}
+              {isLoading && <TypingIndicator />}
+            </div>
+          </ScrollArea>
+        )}
+
+        <div className="sticky bottom-0 border-t border-border bg-background p-4">
+          <form onSubmit={handleSubmit} className="relative">
+            <Textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Send a message..."
+              className="min-h-[52px] max-h-[200px] resize-none pr-14 text-base"
+              rows={1}
+            />
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!input.trim() || isLoading}
+              className="absolute right-2 bottom-2"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+              <Send className="size-4" />
+            </Button>
+          </form>
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            Frontend only — connect a backend to get real AI responses.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
+      <div className="flex size-16 items-center justify-center rounded-2xl bg-muted">
+        <Sparkles className="size-8 text-muted-foreground" />
+      </div>
+      <div>
+        <h2 className="text-xl font-semibold tracking-tight">
+          How can I help you?
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Start a conversation by typing a message below.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ChatBubble({ message }: { message: Message }) {
+  const isUser = message.role === "user";
+
+  return (
+    <div className={cn("flex items-start gap-3", isUser && "flex-row-reverse")}>
+      <Avatar
+        className={cn(
+          "flex size-8 shrink-0 items-center justify-center rounded-lg text-xs",
+          isUser
+            ? "bg-primary text-primary-foreground"
+            : "bg-muted text-muted-foreground"
+        )}
+      >
+        {isUser ? <User className="size-4" /> : <Bot className="size-4" />}
+      </Avatar>
+      <div
+        className={cn(
+          "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
+          isUser
+            ? "bg-primary text-primary-foreground"
+            : "bg-muted text-foreground"
+        )}
+      >
+        {message.content}
+      </div>
+    </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div className="flex items-start gap-3">
+      <Avatar className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground text-xs">
+        <Bot className="size-4" />
+      </Avatar>
+      <div className="rounded-2xl bg-muted px-4 py-3">
+        <div className="flex gap-1">
+          <span className="size-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:0ms]" />
+          <span className="size-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:150ms]" />
+          <span className="size-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:300ms]" />
         </div>
-      </main>
+      </div>
     </div>
   );
 }
