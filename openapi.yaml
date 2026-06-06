@@ -1,0 +1,2914 @@
+openapi: 3.1.0
+info:
+  title: Vortex API
+  version: 1.0.0
+  description: |
+    Local-first context refinery API for Vortex V1.
+
+    **Product spec:** [Initial-idea.md](./Initial-idea.md)
+    **Implementation spec:** [TECHNICAL.md](./TECHNICAL.md)
+
+    Conventions:
+    - All routes are space-scoped unless noted.
+    - Long-running work (ingest, re-embed) returns `202 Accepted` with a `job_id`.
+    - JSON field names use `snake_case` to align with the SQLite schema.
+    - Timestamps are Unix milliseconds unless noted as ISO 8601 strings in export payloads.
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development (`pnpm dev`)
+
+# V1 is local-first single-user; no auth layer.
+security: []
+
+tags:
+  - name: Health
+    description: Process and dependency checks
+  - name: Spaces
+    description: Workspace root
+  - name: Sources
+    description: Immutable evidence uploads
+  - name: Ingest
+    description: Pipeline runs and re-ingest
+  - name: Jobs
+    description: Background work queue
+  - name: Entities
+    description: Things in the world
+  - name: Facts
+    description: Atomic claims and truth curation
+  - name: Decisions
+    description: Owner commitments
+  - name: Links
+    description: Typed graph edges
+  - name: Review
+    description: Human-in-the-loop ingest resolution
+  - name: Conflicts
+    description: Truth collisions
+  - name: Events
+    description: Append-only audit timeline
+  - name: Search
+    description: Hybrid retrieval and Q&A
+  - name: ContextPacks
+    description: Versioned agent exports
+
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Health check
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/spaces:
+    get:
+      tags: [Spaces]
+      operationId: listSpaces
+      summary: List spaces
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Paginated space list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpaceListResponse"
+    post:
+      tags: [Spaces]
+      operationId: createSpace
+      summary: Create a space
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSpaceRequest"
+      responses:
+        "201":
+          description: Space created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Space"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/spaces/{space_id}:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+    get:
+      tags: [Spaces]
+      operationId: getSpace
+      summary: Get space by ID
+      responses:
+        "200":
+          description: Space detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpaceDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Spaces]
+      operationId: updateSpace
+      summary: Update space metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSpaceRequest"
+      responses:
+        "200":
+          description: Updated space
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Space"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/sources:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+    get:
+      tags: [Sources]
+      operationId: listSources
+      summary: List sources in a space
+      parameters:
+        - name: ingest_status
+          in: query
+          schema:
+            $ref: "#/components/schemas/SourceIngestStatus"
+        - name: include_deleted
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Paginated source list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceListResponse"
+    post:
+      tags: [Sources]
+      operationId: uploadSource
+      summary: Upload a source file
+      description: |
+        Stores the immutable original on disk, creates a `sources` row, and enqueues
+        an `ingest_source` job. Does not block on pipeline completion.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF, image, or text file
+      responses:
+        "202":
+          description: Upload accepted; ingest job enqueued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadSourceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/sources/{source_id}:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/source_id"
+    get:
+      tags: [Sources]
+      operationId: getSource
+      summary: Get source detail
+      description: Includes latest ingest run, chunks summary, and linked entities.
+      parameters:
+        - name: ingest_run_id
+          in: query
+          description: Defaults to `sources.latest_ingest_run_id`
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Source detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Sources]
+      operationId: deleteSource
+      summary: Soft-delete a source
+      description: Sets `deleted_at`; asset directory retained until explicit purge (V1).
+      responses:
+        "200":
+          description: Source soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Source"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/sources/{source_id}/reingest:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/source_id"
+    post:
+      tags: [Ingest]
+      operationId: reingestSource
+      summary: Re-run ingest on an existing source
+      description: Creates a new `ingest_run` version; prior chunks and snapshots retained.
+      responses:
+        "202":
+          description: Re-ingest job enqueued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestJobResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/spaces/{space_id}/sources/{source_id}/ingest-runs:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/source_id"
+    get:
+      tags: [Ingest]
+      operationId: listIngestRuns
+      summary: List ingest runs for a source
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Ingest run history (newest first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestRunListResponse"
+
+  /api/spaces/{space_id}/sources/{source_id}/ingest-runs/{ingest_run_id}:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/source_id"
+      - $ref: "#/components/parameters/ingest_run_id"
+    get:
+      tags: [Ingest]
+      operationId: getIngestRun
+      summary: Get ingest run progress and paths
+      responses:
+        "200":
+          description: Ingest run detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestRun"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/chunks/{chunk_id}:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/chunk_id"
+    get:
+      tags: [Sources]
+      operationId: getChunk
+      summary: Get a citable chunk
+      responses:
+        "200":
+          description: Chunk with source context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChunkDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/jobs/{job_id}:
+    parameters:
+      - $ref: "#/components/parameters/job_id"
+    get:
+      tags: [Jobs]
+      operationId: getJob
+      summary: Get job status
+      responses:
+        "200":
+          description: Job row
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/jobs/{job_id}/stream:
+    parameters:
+      - $ref: "#/components/parameters/job_id"
+    get:
+      tags: [Jobs]
+      operationId: streamJobProgress
+      summary: Stream job progress (SSE)
+      description: |
+        Server-Sent Events stream for ingest progress. Emits stage updates from
+        the linked `ingest_run` when `job_type` is `ingest_source`.
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Events: `job_update`, `ingest_stage`, `complete`, `failed`
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/jobs/reembed:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+    post:
+      tags: [Jobs]
+      operationId: enqueueReembedSpace
+      summary: Re-embed all chunks in a space
+      description: Used when the embedding model changes; does not re-run full ingest.
+      responses:
+        "202":
+          description: Re-embed job enqueued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobAcceptedResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/entities:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+    get:
+      tags: [Entities]
+      operationId: listEntities
+      summary: List entities
+      parameters:
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          description: Full-text search on name, type, and aliases
+          schema:
+            type: string
+        - name: include_merged
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Paginated entity list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityListResponse"
+    post:
+      tags: [Entities]
+      operationId: createEntity
+      summary: Manually create an entity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEntityRequest"
+      responses:
+        "201":
+          description: Entity created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entity"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/spaces/{space_id}/entities/{entity_id}:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/entity_id"
+    get:
+      tags: [Entities]
+      operationId: getEntity
+      summary: Get entity detail
+      description: Truth panel, conflicts, linked sources, and related entities.
+      parameters:
+        - name: include_dismissed_facts
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Entity detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Entities]
+      operationId: updateEntity
+      summary: Update entity metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEntityRequest"
+      responses:
+        "200":
+          description: Updated entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entity"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/entities/{entity_id}/merge:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/entity_id"
+    post:
+      tags: [Entities]
+      operationId: mergeEntity
+      summary: Merge another entity into this one (survivor)
+      description: |
+        Merges `merged_entity_id` → `{entity_id}` (survivor B). Repoints facts,
+        links, aliases; may open conflicts if fact keys collide.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MergeEntityRequest"
+      responses:
+        "200":
+          description: Merge completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MergeEntityResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/spaces/{space_id}/entities/{entity_id}/refresh-summary:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/entity_id"
+    post:
+      tags: [Entities]
+      operationId: refreshEntitySummary
+      summary: Regenerate entity summary (async)
+      responses:
+        "202":
+          description: Summary refresh job enqueued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobAcceptedResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/facts:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+    get:
+      tags: [Facts]
+      operationId: listFacts
+      summary: List facts
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/FactStatus"
+        - name: entity_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: include_dismissed
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Paginated fact list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactListResponse"
+    post:
+      tags: [Facts]
+      operationId: createFact
+      summary: Manually create a proposed fact
+      description: Runs conflict detection against existing true facts and active decisions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFactRequest"
+      responses:
+        "201":
+          description: Fact created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateFactResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/facts/{fact_id}:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/fact_id"
+    get:
+      tags: [Facts]
+      operationId: getFact
+      summary: Get fact with provenance
+      responses:
+        "200":
+          description: Fact detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/facts/{fact_id}/promote:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/fact_id"
+    post:
+      tags: [Facts]
+      operationId: promoteFact
+      summary: Promote proposed fact to true
+      description: Auto-supersedes any existing true fact with the same `fact_key`.
+      responses:
+        "200":
+          description: Fact promoted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoteFactResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/spaces/{space_id}/facts/{fact_id}/dismiss:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/fact_id"
+    post:
+      tags: [Facts]
+      operationId: dismissFact
+      summary: Dismiss a proposed fact
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DismissFactRequest"
+      responses:
+        "200":
+          description: Fact dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Fact"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/facts/{fact_id}/undismiss:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/fact_id"
+    post:
+      tags: [Facts]
+      operationId: undismissFact
+      summary: Clear dismiss flag on a proposed fact
+      responses:
+        "200":
+          description: Fact undismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Fact"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/decisions:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+    get:
+      tags: [Decisions]
+      operationId: listDecisions
+      summary: List decisions
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/DecisionStatus"
+        - name: entity_id
+          in: query
+          description: Filter by `applies_to` link target
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Paginated decision list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionListResponse"
+    post:
+      tags: [Decisions]
+      operationId: createDecision
+      summary: Manually create an active decision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDecisionRequest"
+      responses:
+        "201":
+          description: Decision created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateDecisionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/decisions/{decision_id}:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/decision_id"
+    get:
+      tags: [Decisions]
+      operationId: getDecision
+      summary: Get decision detail
+      responses:
+        "200":
+          description: Decision detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Decisions]
+      operationId: updateDecision
+      summary: Edit decision title, body, or scope
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDecisionRequest"
+      responses:
+        "200":
+          description: Updated decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Decision"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/decisions/{decision_id}/supersede:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/decision_id"
+    post:
+      tags: [Decisions]
+      operationId: supersedeDecision
+      summary: Supersede an active decision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupersedeDecisionRequest"
+      responses:
+        "200":
+          description: Decision superseded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupersedeDecisionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/links:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+    get:
+      tags: [Links]
+      operationId: listLinks
+      summary: List links with filters
+      parameters:
+        - name: from_kind
+          in: query
+          schema:
+            $ref: "#/components/schemas/NodeKind"
+        - name: from_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: to_kind
+          in: query
+          schema:
+            $ref: "#/components/schemas/NodeKind"
+        - name: to_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: link_type
+          in: query
+          schema:
+            $ref: "#/components/schemas/LinkType"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Paginated link list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkListResponse"
+    post:
+      tags: [Links]
+      operationId: createLink
+      summary: Manually create a link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLinkRequest"
+      responses:
+        "201":
+          description: Link created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Link"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/review:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+    get:
+      tags: [Review]
+      operationId: listReviewItems
+      summary: List review inbox items
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ReviewItemStatus"
+          description: Defaults to `pending`
+        - name: kind
+          in: query
+          schema:
+            $ref: "#/components/schemas/ReviewItemKind"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Paginated review items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewItemListResponse"
+
+  /api/spaces/{space_id}/review/{review_item_id}:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/review_item_id"
+    get:
+      tags: [Review]
+      operationId: getReviewItem
+      summary: Get review item detail
+      responses:
+        "200":
+          description: Review item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/review/{review_item_id}/resolve:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/review_item_id"
+    post:
+      tags: [Review]
+      operationId: resolveReviewItem
+      summary: Accept or dismiss a review item
+      description: |
+        Resolution shape depends on `kind`:
+        - `entity_match` / `entity_create` — pick entity or create new
+        - `entity_merge_suggestion` — merge or dismiss
+        - `decision_suggestion` — confirm (creates active decision), edit & confirm, or dismiss
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveReviewItemRequest"
+      responses:
+        "200":
+          description: Review item resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolveReviewItemResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/spaces/{space_id}/conflicts:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+    get:
+      tags: [Conflicts]
+      operationId: listConflicts
+      summary: List conflicts
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ConflictStatus"
+          description: Defaults to `open`
+        - name: entity_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Paginated conflicts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConflictListResponse"
+
+  /api/spaces/{space_id}/conflicts/{conflict_id}:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/conflict_id"
+    get:
+      tags: [Conflicts]
+      operationId: getConflict
+      summary: Get conflict detail (open or resolved)
+      responses:
+        "200":
+          description: Conflict with fact and decision sides
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConflictDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/conflicts/{conflict_id}/resolve:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/conflict_id"
+    post:
+      tags: [Conflicts]
+      operationId: resolveConflict
+      summary: Resolve a conflict
+      description: Resolution is required — no dismiss-without-outcome in V1.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveConflictRequest"
+      responses:
+        "200":
+          description: Conflict resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolveConflictResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/events:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+    get:
+      tags: [Events]
+      operationId: listEvents
+      summary: Audit timeline
+      parameters:
+        - name: object_kind
+          in: query
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/NodeKind"
+              - type: string
+                enum: [ingest_run]
+        - name: object_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: event_type
+          in: query
+          schema:
+            type: string
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Paginated events (newest first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventListResponse"
+
+  /api/spaces/{space_id}/search:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+    post:
+      tags: [Search]
+      operationId: search
+      summary: Natural-language Q&A with citations
+      description: |
+        Hybrid retrieval (FTS + vectors + graph expansion) followed by LLM synthesis.
+        UI labels: **Explore** (`fast`) — proposed + true facts with unverified badges;
+        **Verified** (`expert`) — true facts and active decisions only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Answer with citations and optional disclaimer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/context-packs:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+    get:
+      tags: [ContextPacks]
+      operationId: listContextPacks
+      summary: List exported context packs
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Paginated context pack metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContextPackListResponse"
+    post:
+      tags: [ContextPacks]
+      operationId: exportContextPack
+      summary: Export a versioned context pack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExportContextPackRequest"
+      responses:
+        "201":
+          description: Context pack written to disk and DB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContextPackExportResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/context-packs/{pack_id}:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/pack_id"
+    get:
+      tags: [ContextPacks]
+      operationId: getContextPack
+      summary: Get context pack metadata and download paths
+      responses:
+        "200":
+          description: Context pack row
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContextPack"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/spaces/{space_id}/context-packs/{pack_id}/download:
+    parameters:
+      - $ref: "#/components/parameters/space_id"
+      - $ref: "#/components/parameters/pack_id"
+    get:
+      tags: [ContextPacks]
+      operationId: downloadContextPack
+      summary: Download pack.json (and optional pack.md)
+      parameters:
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, md]
+            default: json
+      responses:
+        "200":
+          description: Pack file contents
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Full pack JSON document
+            text/markdown:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  parameters:
+    space_id:
+      name: space_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    source_id:
+      name: source_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ingest_run_id:
+      name: ingest_run_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    chunk_id:
+      name: chunk_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    job_id:
+      name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    entity_id:
+      name: entity_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    fact_id:
+      name: fact_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    decision_id:
+      name: decision_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    review_item_id:
+      name: review_item_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    conflict_id:
+      name: conflict_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    pack_id:
+      name: pack_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: State conflict or duplicate
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              examples: [validation_error, not_found, conflict, ingest_in_progress]
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+
+    PaginationMeta:
+      type: object
+      required: [total, limit, offset]
+      properties:
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        data_dir:
+          type: string
+        db:
+          type: string
+          enum: [connected]
+
+    FactStatus:
+      type: string
+      enum: [proposed, corroborated, "true", superseded]
+      description: V1 writes only proposed, true, superseded
+
+    DecisionStatus:
+      type: string
+      enum: [active, superseded]
+
+    LinkType:
+      type: string
+      enum:
+        - mentions
+        - about
+        - supports
+        - related
+        - applies_to
+        - establishes
+        - overrides
+        - canon_for
+        - supersedes
+
+    NodeKind:
+      type: string
+      enum: [source, chunk, entity, fact, decision]
+
+    SourceIngestStatus:
+      type: string
+      enum: [pending, processing, complete, failed]
+
+    IngestStage:
+      type: string
+      enum:
+        - store
+        - extract
+        - chunk
+        - structure
+        - resolve
+        - persist
+        - conflicts
+        - embed
+        - refresh
+
+    JobStatus:
+      type: string
+      enum: [pending, running, complete, failed]
+
+    JobType:
+      type: string
+      enum: [ingest_source, reembed_space, refresh_entity_summary]
+
+    ConflictStatus:
+      type: string
+      enum: [open, resolved]
+
+    ReviewItemKind:
+      type: string
+      enum:
+        - entity_match
+        - entity_create
+        - entity_merge_suggestion
+        - decision_suggestion
+
+    ReviewItemStatus:
+      type: string
+      enum: [pending, accepted, dismissed]
+
+    SearchMode:
+      type: string
+      description: |
+        Search trust filter. UI label **Explore** maps to `fast`; **Verified** maps to `expert`.
+      enum: [fast, expert]
+
+    ContextPackType:
+      type: string
+      enum: [canon, full]
+
+    CitationLabel:
+      type: string
+      enum: [canon, decision, unverified, excerpt_only]
+
+    Space:
+      type: object
+      required: [id, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          description: Unix ms
+        updated_at:
+          type: integer
+          description: Unix ms
+
+    SpaceDetail:
+      allOf:
+        - $ref: "#/components/schemas/Space"
+        - type: object
+          properties:
+            counts:
+              type: object
+              properties:
+                sources:
+                  type: integer
+                entities:
+                  type: integer
+                open_conflicts:
+                  type: integer
+                pending_review:
+                  type: integer
+
+    SpaceListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Space"
+        pagination:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    CreateSpaceRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    UpdateSpaceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+
+    Source:
+      type: object
+      required:
+        - id
+        - space_id
+        - original_filename
+        - mime_type
+        - byte_size
+        - sha256
+        - asset_path
+        - ingest_status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        space_id:
+          type: string
+          format: uuid
+        original_filename:
+          type: string
+        mime_type:
+          type: string
+        byte_size:
+          type: integer
+        sha256:
+          type: string
+        asset_path:
+          type: string
+          description: Relative path from data_dir
+        ingest_status:
+          $ref: "#/components/schemas/SourceIngestStatus"
+        latest_ingest_run_id:
+          type: string
+          format: uuid
+          nullable: true
+        summary_path:
+          type: string
+          nullable: true
+        deleted_at:
+          type: integer
+          nullable: true
+        created_at:
+          type: integer
+
+    SourceListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Source"
+        pagination:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    UploadSourceResponse:
+      type: object
+      required: [source, job_id, ingest_run_id]
+      properties:
+        source:
+          $ref: "#/components/schemas/Source"
+        job_id:
+          type: string
+          format: uuid
+        ingest_run_id:
+          type: string
+          format: uuid
+
+    IngestJobResponse:
+      type: object
+      required: [job_id, ingest_run_id]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        ingest_run_id:
+          type: string
+          format: uuid
+
+    JobAcceptedResponse:
+      type: object
+      required: [job_id]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+
+    SourceDetail:
+      allOf:
+        - $ref: "#/components/schemas/Source"
+        - type: object
+          properties:
+            ingest_run:
+              $ref: "#/components/schemas/IngestRun"
+            summary:
+              type: string
+              nullable: true
+              description: Latest summary.md text if available
+            chunk_count:
+              type: integer
+            entities_mentioned:
+              type: array
+              items:
+                $ref: "#/components/schemas/EntitySummary"
+            pending_review_count:
+              type: integer
+              description: Unresolved mentions on this source
+
+    IngestRun:
+      type: object
+      required:
+        - id
+        - space_id
+        - source_id
+        - version
+        - stage
+        - status
+        - progress_pct
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        space_id:
+          type: string
+          format: uuid
+        source_id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+        stage:
+          $ref: "#/components/schemas/IngestStage"
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        progress_pct:
+          type: integer
+          minimum: 0
+          maximum: 100
+        error_message:
+          type: string
+          nullable: true
+        extraction_path:
+          type: string
+          nullable: true
+        summary_path:
+          type: string
+          nullable: true
+        llm_model:
+          type: string
+          nullable: true
+        started_at:
+          type: integer
+          nullable: true
+        finished_at:
+          type: integer
+          nullable: true
+        created_at:
+          type: integer
+
+    IngestRunListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngestRun"
+        pagination:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    Chunk:
+      type: object
+      required:
+        - id
+        - space_id
+        - source_id
+        - ingest_run_id
+        - ordinal
+        - content
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        space_id:
+          type: string
+          format: uuid
+        source_id:
+          type: string
+          format: uuid
+        ingest_run_id:
+          type: string
+          format: uuid
+        ordinal:
+          type: integer
+        page:
+          type: integer
+          nullable: true
+        char_start:
+          type: integer
+          nullable: true
+        char_end:
+          type: integer
+          nullable: true
+        content:
+          type: string
+        token_count:
+          type: integer
+          nullable: true
+        created_at:
+          type: integer
+
+    ChunkDetail:
+      allOf:
+        - $ref: "#/components/schemas/Chunk"
+        - type: object
+          properties:
+            source:
+              $ref: "#/components/schemas/Source"
+            linked_entities:
+              type: array
+              items:
+                $ref: "#/components/schemas/EntitySummary"
+
+    Job:
+      type: object
+      required:
+        - id
+        - job_type
+        - payload_json
+        - status
+        - attempts
+        - max_attempts
+        - run_after
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        space_id:
+          type: string
+          format: uuid
+          nullable: true
+        job_type:
+          $ref: "#/components/schemas/JobType"
+        payload_json:
+          type: object
+          additionalProperties: true
+          examples:
+            - source_id: "550e8400-e29b-41d4-a716-446655440000"
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        attempts:
+          type: integer
+        max_attempts:
+          type: integer
+        error_message:
+          type: string
+          nullable: true
+        run_after:
+          type: integer
+        started_at:
+          type: integer
+          nullable: true
+        finished_at:
+          type: integer
+          nullable: true
+        created_at:
+          type: integer
+        ingest_run:
+          $ref: "#/components/schemas/IngestRun"
+          description: Present when job_type is ingest_source
+
+    EntitySummary:
+      type: object
+      required: [id, canonical_name, entity_type]
+      properties:
+        id:
+          type: string
+          format: uuid
+        canonical_name:
+          type: string
+        entity_type:
+          type: string
+        merged_into_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    Entity:
+      type: object
+      required:
+        - id
+        - space_id
+        - canonical_name
+        - entity_type
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        space_id:
+          type: string
+          format: uuid
+        canonical_name:
+          type: string
+        entity_type:
+          type: string
+        summary:
+          type: string
+          nullable: true
+        summary_updated_at:
+          type: integer
+          nullable: true
+        merged_into_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: integer
+        updated_at:
+          type: integer
+
+    EntityListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Entity"
+        pagination:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    EntityDetail:
+      allOf:
+        - $ref: "#/components/schemas/Entity"
+        - type: object
+          properties:
+            aliases:
+              type: array
+              items:
+                $ref: "#/components/schemas/EntityAlias"
+            true_facts:
+              type: array
+              items:
+                $ref: "#/components/schemas/Fact"
+            active_decisions:
+              type: array
+              items:
+                $ref: "#/components/schemas/Decision"
+            proposed_facts:
+              type: array
+              items:
+                $ref: "#/components/schemas/Fact"
+            open_conflicts:
+              type: array
+              items:
+                $ref: "#/components/schemas/Conflict"
+            related_entities:
+              type: array
+              items:
+                $ref: "#/components/schemas/EntitySummary"
+            linked_sources:
+              type: array
+              items:
+                $ref: "#/components/schemas/Source"
+            redirect:
+              type: object
+              nullable: true
+              description: Set when entity was merged away
+              properties:
+                merged_into:
+                  $ref: "#/components/schemas/EntitySummary"
+
+    EntityAlias:
+      type: object
+      required: [id, entity_id, alias, source, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        entity_id:
+          type: string
+          format: uuid
+        alias:
+          type: string
+        source:
+          type: string
+          enum: [ingest, user]
+        created_at:
+          type: integer
+
+    CreateEntityRequest:
+      type: object
+      required: [canonical_name, entity_type]
+      properties:
+        canonical_name:
+          type: string
+        entity_type:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+
+    UpdateEntityRequest:
+      type: object
+      properties:
+        canonical_name:
+          type: string
+        entity_type:
+          type: string
+
+    MergeEntityRequest:
+      type: object
+      required: [merged_entity_id]
+      properties:
+        merged_entity_id:
+          type: string
+          format: uuid
+          description: Entity A merged into survivor B (path entity_id)
+        keep_canonical_name:
+          type: string
+          enum: [survivor, merged]
+          default: survivor
+
+    MergeEntityResponse:
+      type: object
+      required: [survivor, merged_entity_id, conflicts_opened]
+      properties:
+        survivor:
+          $ref: "#/components/schemas/Entity"
+        merged_entity_id:
+          type: string
+          format: uuid
+        conflicts_opened:
+          type: array
+          items:
+            $ref: "#/components/schemas/Conflict"
+
+    Fact:
+      type: object
+      required:
+        - id
+        - space_id
+        - entity_id
+        - predicate
+        - fact_key
+        - status
+        - display_text
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        space_id:
+          type: string
+          format: uuid
+        entity_id:
+          type: string
+          format: uuid
+        predicate:
+          type: string
+        fact_key:
+          type: string
+        status:
+          $ref: "#/components/schemas/FactStatus"
+        value_text:
+          type: string
+          nullable: true
+        value_number:
+          type: number
+          nullable: true
+        value_date:
+          type: string
+          nullable: true
+          description: ISO date
+        value_json:
+          type: string
+          nullable: true
+        display_text:
+          type: string
+        confidence:
+          type: number
+          nullable: true
+        supersedes_id:
+          type: string
+          format: uuid
+          nullable: true
+        superseded_by_id:
+          type: string
+          format: uuid
+          nullable: true
+        promoted_at:
+          type: integer
+          nullable: true
+        dismissed_at:
+          type: integer
+          nullable: true
+        dismissed_reason:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+        updated_at:
+          type: integer
+
+    FactProvenance:
+      type: object
+      required: [id, fact_id, chunk_id, source_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        fact_id:
+          type: string
+          format: uuid
+        chunk_id:
+          type: string
+          format: uuid
+        source_id:
+          type: string
+          format: uuid
+        ingest_run_id:
+          type: string
+          format: uuid
+          nullable: true
+        quote:
+          type: string
+          nullable: true
+        confidence:
+          type: number
+          nullable: true
+        created_at:
+          type: integer
+
+    FactListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Fact"
+        pagination:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    FactDetail:
+      allOf:
+        - $ref: "#/components/schemas/Fact"
+        - type: object
+          properties:
+            entity:
+              $ref: "#/components/schemas/EntitySummary"
+            provenance:
+              type: array
+              items:
+                $ref: "#/components/schemas/FactProvenance"
+
+    CreateFactRequest:
+      type: object
+      required: [entity_id, predicate, display_text]
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+        predicate:
+          type: string
+        display_text:
+          type: string
+        value_text:
+          type: string
+        value_number:
+          type: number
+        value_date:
+          type: string
+        value_json:
+          type: object
+        chunk_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Optional provenance chunks
+
+    CreateFactResponse:
+      type: object
+      required: [fact]
+      properties:
+        fact:
+          $ref: "#/components/schemas/Fact"
+        conflict:
+          $ref: "#/components/schemas/Conflict"
+          nullable: true
+
+    DismissFactRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+
+    PromoteFactResponse:
+      type: object
+      required: [fact]
+      properties:
+        fact:
+          $ref: "#/components/schemas/Fact"
+        superseded_fact:
+          $ref: "#/components/schemas/Fact"
+          nullable: true
+        conflict_resolved:
+          $ref: "#/components/schemas/Conflict"
+          nullable: true
+
+    Decision:
+      type: object
+      required:
+        - id
+        - space_id
+        - title
+        - body
+        - status
+        - origin
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        space_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        body:
+          type: string
+        status:
+          $ref: "#/components/schemas/DecisionStatus"
+        effective_date:
+          type: string
+          nullable: true
+        supersedes_id:
+          type: string
+          format: uuid
+          nullable: true
+        superseded_by_id:
+          type: string
+          format: uuid
+          nullable: true
+        source_id:
+          type: string
+          format: uuid
+          nullable: true
+        chunk_id:
+          type: string
+          format: uuid
+          nullable: true
+        origin:
+          type: string
+          enum: [user, ingest_confirmed]
+        ingest_run_id:
+          type: string
+          format: uuid
+          nullable: true
+        review_item_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: integer
+        updated_at:
+          type: integer
+
+    DecisionListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Decision"
+        pagination:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    DecisionDetail:
+      allOf:
+        - $ref: "#/components/schemas/Decision"
+        - type: object
+          properties:
+            applies_to:
+              type: array
+              items:
+                $ref: "#/components/schemas/EntitySummary"
+            linked_facts:
+              type: array
+              items:
+                $ref: "#/components/schemas/Fact"
+            provenance:
+              type: object
+              nullable: true
+              properties:
+                source:
+                  $ref: "#/components/schemas/Source"
+                chunk:
+                  $ref: "#/components/schemas/Chunk"
+
+    CreateDecisionRequest:
+      type: object
+      required: [title, body]
+      properties:
+        title:
+          type: string
+        body:
+          type: string
+        effective_date:
+          type: string
+        applies_to_entity_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        source_id:
+          type: string
+          format: uuid
+        chunk_id:
+          type: string
+          format: uuid
+        establishes_fact_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        overrides_fact_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    CreateDecisionResponse:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          $ref: "#/components/schemas/Decision"
+        conflicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Conflict"
+
+    UpdateDecisionRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        body:
+          type: string
+        effective_date:
+          type: string
+          nullable: true
+        applies_to_entity_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    SupersedeDecisionRequest:
+      type: object
+      required: [replacement_decision_id]
+      properties:
+        replacement_decision_id:
+          type: string
+          format: uuid
+          description: Existing decision that replaces this one, or create via nested body
+        replacement:
+          $ref: "#/components/schemas/CreateDecisionRequest"
+          description: Alternative to replacement_decision_id — create new active decision
+
+    SupersedeDecisionResponse:
+      type: object
+      required: [superseded, replacement]
+      properties:
+        superseded:
+          $ref: "#/components/schemas/Decision"
+        replacement:
+          $ref: "#/components/schemas/Decision"
+
+    Link:
+      type: object
+      required:
+        - id
+        - space_id
+        - link_type
+        - from_kind
+        - from_id
+        - to_kind
+        - to_id
+        - source
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        space_id:
+          type: string
+          format: uuid
+        link_type:
+          $ref: "#/components/schemas/LinkType"
+        from_kind:
+          $ref: "#/components/schemas/NodeKind"
+        from_id:
+          type: string
+          format: uuid
+        to_kind:
+          $ref: "#/components/schemas/NodeKind"
+        to_id:
+          type: string
+          format: uuid
+        weight:
+          type: number
+          nullable: true
+        source:
+          type: string
+          enum: [ingest, user, system]
+        ingest_run_id:
+          type: string
+          format: uuid
+          nullable: true
+        metadata_json:
+          type: object
+          nullable: true
+        created_at:
+          type: integer
+
+    LinkListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Link"
+        pagination:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    CreateLinkRequest:
+      type: object
+      required: [link_type, from_kind, from_id, to_kind, to_id]
+      properties:
+        link_type:
+          $ref: "#/components/schemas/LinkType"
+        from_kind:
+          $ref: "#/components/schemas/NodeKind"
+        from_id:
+          type: string
+          format: uuid
+        to_kind:
+          $ref: "#/components/schemas/NodeKind"
+        to_id:
+          type: string
+          format: uuid
+        weight:
+          type: number
+
+    ReviewItemPayload:
+      type: object
+      description: Shape varies by kind; see TECHNICAL.md §6.2
+      properties:
+        mention_text:
+          type: string
+        normalized:
+          type: string
+        suggested_type:
+          type: string
+        chunk_id:
+          type: string
+          format: uuid
+        source_id:
+          type: string
+          format: uuid
+        llm_confidence:
+          type: number
+        candidates:
+          type: array
+          items:
+            type: object
+            properties:
+              entity_id:
+                type: string
+                format: uuid
+              canonical_name:
+                type: string
+              match_score:
+                type: number
+              match_kind:
+                type: string
+        evidence_chunk_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        title:
+          type: string
+        body:
+          type: string
+
+    ReviewItem:
+      type: object
+      required: [id, space_id, kind, status, payload_json, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        space_id:
+          type: string
+          format: uuid
+        kind:
+          $ref: "#/components/schemas/ReviewItemKind"
+        status:
+          $ref: "#/components/schemas/ReviewItemStatus"
+        source_id:
+          type: string
+          format: uuid
+          nullable: true
+        ingest_run_id:
+          type: string
+          format: uuid
+          nullable: true
+        payload_json:
+          $ref: "#/components/schemas/ReviewItemPayload"
+        resolution_json:
+          type: object
+          nullable: true
+        created_at:
+          type: integer
+        resolved_at:
+          type: integer
+          nullable: true
+
+    ReviewItemListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewItem"
+        pagination:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    ResolveReviewItemRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            - accept
+            - dismiss
+            - merge
+            - create_entity
+            - link_entity
+            - confirm_decision
+            - edit_and_confirm_decision
+        entity_id:
+          type: string
+          format: uuid
+          description: For link_entity, merge target, or confirm paths
+        merged_entity_id:
+          type: string
+          format: uuid
+          description: For merge action — entity to merge into entity_id
+        canonical_name:
+          type: string
+          description: For create_entity or edit paths
+        entity_type:
+          type: string
+        decision:
+          type: object
+          properties:
+            title:
+              type: string
+            body:
+              type: string
+            applies_to_entity_ids:
+              type: array
+              items:
+                type: string
+                format: uuid
+
+    ResolveReviewItemResponse:
+      type: object
+      required: [review_item]
+      properties:
+        review_item:
+          $ref: "#/components/schemas/ReviewItem"
+        entity:
+          $ref: "#/components/schemas/Entity"
+          nullable: true
+        decision:
+          $ref: "#/components/schemas/Decision"
+          nullable: true
+        links_created:
+          type: array
+          items:
+            $ref: "#/components/schemas/Link"
+
+    Conflict:
+      type: object
+      required:
+        - id
+        - space_id
+        - fact_key
+        - entity_id
+        - status
+        - summary
+        - fact_ids_json
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        space_id:
+          type: string
+          format: uuid
+        fact_key:
+          type: string
+        entity_id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/ConflictStatus"
+        summary:
+          type: string
+        fact_ids_json:
+          type: array
+          items:
+            type: string
+            format: uuid
+        decision_ids_json:
+          type: array
+          items:
+            type: string
+            format: uuid
+          nullable: true
+        ingest_run_id:
+          type: string
+          format: uuid
+          nullable: true
+        resolved_at:
+          type: integer
+          nullable: true
+        resolution_note:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+
+    ConflictListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Conflict"
+        pagination:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    ConflictDetail:
+      allOf:
+        - $ref: "#/components/schemas/Conflict"
+        - type: object
+          properties:
+            entity:
+              $ref: "#/components/schemas/EntitySummary"
+            facts:
+              type: array
+              items:
+                $ref: "#/components/schemas/FactDetail"
+            decisions:
+              type: array
+              items:
+                $ref: "#/components/schemas/Decision"
+
+    ResolveConflictRequest:
+      type: object
+      required: [resolution_kind]
+      properties:
+        resolution_kind:
+          type: string
+          enum:
+            - pick_fact_as_true
+            - split_fact_slots
+            - decision_is_canon
+            - fact_is_canon
+            - revise_decision
+        winning_fact_id:
+          type: string
+          format: uuid
+        winning_decision_id:
+          type: string
+          format: uuid
+        split:
+          type: object
+          properties:
+            fact_id:
+              type: string
+              format: uuid
+            new_fact_key:
+              type: string
+            new_predicate:
+              type: string
+        revised_decision:
+          $ref: "#/components/schemas/UpdateDecisionRequest"
+        resolution_note:
+          type: string
+        dismiss_losing_proposed_fact_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    ResolveConflictResponse:
+      type: object
+      required: [conflict]
+      properties:
+        conflict:
+          $ref: "#/components/schemas/Conflict"
+        facts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Fact"
+        decisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Decision"
+
+    Event:
+      type: object
+      required: [id, space_id, event_type, object_kind, object_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        space_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          examples:
+            - source_uploaded
+            - ingest_completed
+            - fact_promoted
+            - fact_superseded
+            - fact_dismissed
+            - decision_created
+            - entity_merged
+            - conflict_opened
+            - conflict_resolved
+            - context_pack_exported
+        object_kind:
+          oneOf:
+            - $ref: "#/components/schemas/NodeKind"
+            - type: string
+              enum: [ingest_run]
+        object_id:
+          type: string
+          format: uuid
+        payload_json:
+          type: object
+          nullable: true
+        created_at:
+          type: integer
+
+    EventListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Event"
+        pagination:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    SearchRequest:
+      type: object
+      required: [query, mode]
+      properties:
+        query:
+          type: string
+        mode:
+          $ref: "#/components/schemas/SearchMode"
+          default: fast
+          description: Default Explore mode (`fast`).
+
+    SearchCitation:
+      type: object
+      required: [ref, label]
+      properties:
+        ref:
+          type: integer
+          description: Footnote number matching [n] in answer text
+        fact_id:
+          type: string
+          format: uuid
+          nullable: true
+        decision_id:
+          type: string
+          format: uuid
+          nullable: true
+        chunk_id:
+          type: string
+          format: uuid
+          nullable: true
+        source_id:
+          type: string
+          format: uuid
+          nullable: true
+        label:
+          $ref: "#/components/schemas/CitationLabel"
+        excerpt:
+          type: string
+          nullable: true
+
+    SearchResponse:
+      type: object
+      required: [answer, citations, mode]
+      properties:
+        answer:
+          type: string
+          description: Synthesized answer with inline [n] footnote markers
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchCitation"
+        disclaimer:
+          type: string
+          nullable: true
+          description: e.g. no promoted truth — excerpt-only fallback
+        mode:
+          $ref: "#/components/schemas/SearchMode"
+        conflicts_open:
+          type: integer
+          description: Unresolved conflicts in space (warning flag)
+
+    ExportContextPackRequest:
+      type: object
+      required: [pack_type]
+      properties:
+        pack_type:
+          $ref: "#/components/schemas/ContextPackType"
+        label:
+          type: string
+        include_md:
+          type: boolean
+          default: true
+
+    ContextPack:
+      type: object
+      required:
+        - id
+        - space_id
+        - version
+        - as_of
+        - pack_type
+        - manifest_json
+        - export_path
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        space_id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+        as_of:
+          type: integer
+          description: Unix ms truth snapshot time
+        label:
+          type: string
+          nullable: true
+        pack_type:
+          $ref: "#/components/schemas/ContextPackType"
+        manifest_json:
+          type: object
+          additionalProperties: true
+        export_path:
+          type: string
+        created_at:
+          type: integer
+
+    ContextPackListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContextPack"
+        pagination:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    ContextPackExportResponse:
+      type: object
+      required: [context_pack, conflicts_open]
+      properties:
+        context_pack:
+          $ref: "#/components/schemas/ContextPack"
+        conflicts_open:
+          type: integer
+        warning:
+          type: string
+          nullable: true
+          description: Present when conflicts_open > 0
+
+    ContextPackDocument:
+      type: object
+      description: On-disk pack.json schema (TECHNICAL.md §8.3)
+      required:
+        - vortex_context_pack
+        - pack_type
+        - space_id
+        - version
+        - as_of
+        - conflicts_open
+        - entities
+        - true_facts
+        - active_decisions
+        - source_index
+      properties:
+        vortex_context_pack:
+          type: string
+          enum: ["1.0"]
+        pack_type:
+          $ref: "#/components/schemas/ContextPackType"
+        space_id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+        as_of:
+          type: string
+          format: date-time
+        conflicts_open:
+          type: integer
+        entities:
+          type: array
+          items:
+            type: object
+            required: [id, canonical_name, entity_type]
+            properties:
+              id:
+                type: string
+                format: uuid
+              canonical_name:
+                type: string
+              entity_type:
+                type: string
+        true_facts:
+          type: array
+          items:
+            type: object
+            required: [id, entity_id, fact_key, display_text, provenance]
+            properties:
+              id:
+                type: string
+                format: uuid
+              entity_id:
+                type: string
+                format: uuid
+              fact_key:
+                type: string
+              display_text:
+                type: string
+              provenance:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    chunk_id:
+                      type: string
+                      format: uuid
+                    source_id:
+                      type: string
+                      format: uuid
+        active_decisions:
+          type: array
+          items:
+            type: object
+            required: [id, title, body, applies_to, provenance]
+            properties:
+              id:
+                type: string
+                format: uuid
+              title:
+                type: string
+              body:
+                type: string
+              applies_to:
+                type: array
+                items:
+                  type: string
+                  format: uuid
+              provenance:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    chunk_id:
+                      type: string
+                      format: uuid
+                    source_id:
+                      type: string
+                      format: uuid
+        source_index:
+          type: array
+          items:
+            type: object
+            required: [source_id, original_filename, sha256]
+            properties:
+              source_id:
+                type: string
+                format: uuid
+              original_filename:
+                type: string
+              sha256:
+                type: string
+        proposed_appendix:
+          type: object
+          description: Full pack type only
+          properties:
+            proposed_facts:
+              type: array
+              items:
+                type: object
+                required: [id, entity_id, display_text, trust, provenance]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  entity_id:
+                    type: string
+                    format: uuid
+                  display_text:
+                    type: string
+                  trust:
+                    type: string
+                    enum: [unverified]
+                  provenance:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        chunk_id:
+                          type: string
+                          format: uuid
+            pending_decisions:
+              type: array
+              items:
+                type: object
+                required: [review_item_id, title, body, trust]
+                properties:
+                  review_item_id:
+                    type: string
+                    format: uuid
+                  title:
+                    type: string
+                  body:
+                    type: string
+                  trust:
+                    type: string
+                    enum: [unverified]
+                  chunk_id:
+                    type: string
+                    format: uuid
