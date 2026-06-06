@@ -1,7 +1,7 @@
 # Vortex — Build Readiness Synthesis
 
 > **Status:** Working document — resolve open items here before writing code.  
-> **Sources:** [Initial-idea.md](./Initial-idea.md) · [TECHNICAL.md](./TECHNICAL.md) · [openapi.yaml](./openapi.yaml)  
+> **Sources:** [idea.md](./idea.md) · [TECHNICAL.md](./TECHNICAL.md) · [openapi.yaml](./openapi.yaml)  
 > **Created:** 2026-06-06
 
 ---
@@ -16,8 +16,8 @@ This file captures a pre-build review of the Vortex specs from an **LLM/agent ex
 
 ### What works well
 
-- Clear three-way split: product (`Initial-idea.md`) → implementation (`TECHNICAL.md`) → contracts (`openapi.yaml`)
-- V1 product decisions are locked (no open scope questions in Initial-idea)
+- Clear three-way split: product (`idea.md`) → implementation (`TECHNICAL.md`) → contracts (`openapi.yaml`)
+- V1 product decisions are locked (no open scope questions in idea)
 - Schema, ingest stages, entity-resolution tiers, and UI→route→API map (TECH §10) are unusually detailed
 - Truth lifecycle, conflict rules, and Explore/Verified semantics are explicit
 
@@ -34,7 +34,7 @@ Specs are **buildable in principle** but **not yet agent-ready**. Without refine
 
 - Implement schema and CRUD confidently
 - Guess on chunking, hybrid ranking, and structure-step JSON
-- Build search before ingest/truth is solid (violating Initial-idea Next steps)
+- Build search before ingest/truth is solid (violating idea Next steps)
 - Introduce inconsistencies around naming and unresolved-entity facts
 
 ---
@@ -160,6 +160,6 @@ Record decisions made in chat here. Link to updated spec sections when resolved.
 ## Working agreement
 
 - **No application code** until P0 items are resolved or explicitly deferred with rationale.
-- **Product behavior changes** → update `Initial-idea.md` first, then TECH/openapi.
+- **Product behavior changes** → update `idea.md` first, then TECH/openapi.
 - **Algorithm/schema contracts** → prefer new focused docs (`schemas/`, `BUILD_PLAN.md`) over bloating TECH further.
 - This file is the **single checklist** for pre-build readiness; close items in the Resolution log as we go.

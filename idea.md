@@ -347,4 +347,4 @@ Product spec and stack are set. Build order and schema are in [TECHNICAL.md](./T
 
 1. Implement ingest + entity browse before polishing NL answers
 2. Sketch one end-to-end user journey (upload → conflict → promote → query) against the API spec
-3. Keep Initial-idea updated when product behavior changes; keep TECHNICAL/openapi in sync
+3. Keep idea updated when product behavior changes; keep TECHNICAL/openapi in sync

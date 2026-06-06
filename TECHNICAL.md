@@ -1,13 +1,13 @@
 # Vortex — Technical Implementation
 
-> **Product spec:** [Initial-idea.md](./Initial-idea.md) (V1 behavior — update there first)  
+> **Product spec:** [idea.md](./idea.md) (V1 behavior — update there first)  
 > **API spec:** [openapi.yaml](./openapi.yaml) (routes and request/response shapes)
 
-This document describes **how to build** Vortex V1: stack, schema, pipelines, and API conventions. It does not redefine product scope — when in doubt, Initial-idea wins.
+This document describes **how to build** Vortex V1: stack, schema, pipelines, and API conventions. It does not redefine product scope — when in doubt, idea wins.
 
 | Document | Owns |
 | -------- | ---- |
-| **Initial-idea.md** | User-facing behavior, V1 in/out, UX primitives, product decisions |
+| **idea.md** | User-facing behavior, V1 in/out, UX primitives, product decisions |
 | **TECHNICAL.md** (this file) | Stack, storage layout, schema, ingest/search algorithms, implementation detail |
 | **openapi.yaml** | HTTP routes, enums, JSON shapes |
 
@@ -177,7 +177,7 @@ vortex-app/
     components/
   data/                     # Dev data dir (gitignored)
   TECHNICAL.md
-  Initial-idea.md
+  idea.md
 ```
 
 ---
@@ -225,7 +225,7 @@ vortex-app/
 
 | Rule              | Detail                                                                   |
 | ----------------- | ------------------------------------------------------------------------ |
-| Disk vs DB naming | Disk folder **`assets/`** holds blobs; DB table **`sources`** holds metadata — no `assets` table (Initial-idea § Storage) |
+| Disk vs DB naming | Disk folder **`assets/`** holds blobs; DB table **`sources`** holds metadata — no `assets` table (idea § Storage) |
 | Immutability      | Re-upload = new `source_id`; old asset retained for provenance           |
 | Paths in DB       | Relative from `{data_dir}` — portable if data dir moves                  |
 | IDs               | UUIDs for `space_id`, `source_id` — no user filenames in paths           |
@@ -377,7 +377,7 @@ erDiagram
 ### Enums
 
 ```typescript
-// Fact lifecycle (Initial-idea)
+// Fact lifecycle (idea)
 // V1 uses: proposed → true → superseded only. `corroborated` reserved for post-V1.
 type FactStatus = 'proposed' | 'corroborated' | 'true' | 'superseded';
 
@@ -1330,7 +1330,7 @@ Per entity: `**true` facts** + `**active` decisions** where `applies_to` include
 
 ## 8. Search & Q&A
 
-Single natural-language search box (Initial-idea). Two modes: **Explore** (broad — includes proposed extractions) and **Verified** (promoted truth only).
+Single natural-language search box (idea). Two modes: **Explore** (broad — includes proposed extractions) and **Verified** (promoted truth only).
 
 Mode selector in search UI — default **Explore**; persisted per space in client localStorage. API enum values remain `fast` and `expert` (see §8.1).
 
@@ -1655,7 +1655,7 @@ npx openapi-typescript openapi.yaml -o src/lib/api/types.ts
 
 ## 10. Product ↔ UI map
 
-Maps [Initial-idea UX IA](./Initial-idea.md#ux-information-architecture-v1) to App Router pages and APIs. Pixel design is out of scope; this section fixes **where each product surface lives in code**.
+Maps [idea UX IA](./idea.md#ux-information-architecture-v1) to App Router pages and APIs. Pixel design is out of scope; this section fixes **where each product surface lives in code**.
 
 ### App Router (suggested)
 
@@ -1726,9 +1726,9 @@ Poll or revalidate after ingest completes and after review/conflict resolve.
 
 | Topic | Initial | TECH |
 | ----- | ------- | ---- |
-| UX primitives | [§ UX primitives](./Initial-idea.md#ux-primitives-refinery-feel) | §10 (this section) |
-| Review behavior | [§ V1 scope](./Initial-idea.md#v1-scope) | §6.2 |
-| Search modes | [§ Search & Q&A](./Initial-idea.md#search--qa) | §8 |
-| Context packs | [§ V1 scope](./Initial-idea.md#v1-scope) | §8.3 |
+| UX primitives | [§ UX primitives](./idea.md#ux-primitives-refinery-feel) | §10 (this section) |
+| Review behavior | [§ V1 scope](./idea.md#v1-scope) | §6.2 |
+| Search modes | [§ Search & Q&A](./idea.md#search--qa) | §8 |
+| Context packs | [§ V1 scope](./idea.md#v1-scope) | §8.3 |
 | HTTP details | — | [openapi.yaml](./openapi.yaml) |
 

@@ -5,7 +5,7 @@ info:
   description: |
     Local-first context refinery API for Vortex V1.
 
-    **Product spec:** [Initial-idea.md](./Initial-idea.md)
+    **Product spec:** [idea.md](./idea.md)
     **Implementation spec:** [TECHNICAL.md](./TECHNICAL.md)
 
     Conventions:
