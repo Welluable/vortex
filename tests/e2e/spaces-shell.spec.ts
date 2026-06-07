@@ -20,4 +20,26 @@ test.describe("space shell", () => {
     await page.getByRole("button", { name: /toggle sidebar/i }).click();
     await expect(page.getByRole("button", { name: /Acme Corp/i })).toBeVisible();
   });
+
+  test("nav links route to entities and facts", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: "Entities" }).click();
+    await expect(page).toHaveURL(/\/entities$/);
+    await page.getByRole("link", { name: "Facts" }).click();
+    await expect(page).toHaveURL(/\/facts$/);
+  });
+
+  test("active nav item is styled on current route", async ({ page }) => {
+    await page.goto("/");
+    const entities = page.getByRole("link", { name: "Entities" });
+    await entities.click();
+    await expect(entities).toHaveClass(/font-medium/);
+  });
+
+  test("/spaces/new hides space-scoped nav", async ({ page }) => {
+    await page.goto("/spaces/new");
+    await expect(page.getByRole("link", { name: "Search" })).not.toBeVisible();
+    await expect(page.getByRole("link", { name: "Entities" })).not.toBeVisible();
+    await expect(page.getByRole("link", { name: "Facts" })).not.toBeVisible();
+  });
 });
