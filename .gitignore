@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+.crispy
 
 # debug
 npm-debug.log*
