@@ -43,3 +43,11 @@ export const spacesStore = {
     return space;
   },
 };
+
+export function resetSpacesForTest(): void {
+  spaces = [];
+}
+
+export function restoreSeedSpacesForTest(): void {
+  spaces = [...SEED_SPACES];
+}

@@ -42,4 +42,36 @@ test.describe("space shell", () => {
     await expect(page.getByRole("link", { name: "Entities" })).not.toBeVisible();
     await expect(page.getByRole("link", { name: "Facts" })).not.toBeVisible();
   });
+
+  test("empty store redirects / to /spaces/new", async ({ page, request }) => {
+    await request.post("/api/test/spaces", {
+      headers: { "Content-Type": "application/json" },
+      data: { action: "reset" },
+    });
+    try {
+      await page.goto("/");
+      await expect(page).toHaveURL("/spaces/new");
+    } finally {
+      await request.post("/api/test/spaces", {
+        headers: { "Content-Type": "application/json" },
+        data: { action: "restore" },
+      });
+    }
+  });
+
+  test("create space via form redirects with nav and switcher label", async ({ page }) => {
+    await page.goto("/spaces/new");
+    await page.getByLabel("Name").fill("E2E Space");
+    await page.getByRole("button", { name: "Create space" }).click();
+    await expect(page).toHaveURL(/\/spaces\/[0-9a-f-]+$/);
+    await expect(page.getByRole("button", { name: /E2E Space/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Search" })).toBeVisible();
+  });
+
+  test("create space via dropdown menu item", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: /Acme Corp/i }).click();
+    await page.getByRole("menuitem", { name: "Create space" }).click();
+    await expect(page).toHaveURL("/spaces/new");
+  });
 });
