@@ -28,11 +28,22 @@ export function openDatabase(options: OpenDatabaseOptions = {}): DatabaseHandle 
   const { dataDir, dbPath } = resolveDataDir();
   const db = new Database(dbPath);
   loadSqliteVec(db);
-  if (options.migrate) {
+  const shouldMigrate =
+    options.migrate === true ||
+    (options.migrate !== false && process.env.NODE_ENV !== "production");
+  if (shouldMigrate) {
     runMigrations(db);
   }
   singleton = { db, dataDir };
   return singleton;
+}
+
+export function pingDatabase(): { connected: true; dataDir: string } {
+  const { db, dataDir } = openDatabase({
+    migrate: process.env.NODE_ENV !== "production" ? true : false,
+  });
+  db.prepare("SELECT 1").get();
+  return { connected: true, dataDir };
 }
 
 export function closeDatabase(handle: DatabaseHandle = singleton!): void {
