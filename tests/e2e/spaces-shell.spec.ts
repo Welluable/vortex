@@ -29,6 +29,14 @@ test.describe("space shell", () => {
     await expect(page).toHaveURL(/\/facts$/);
   });
 
+  test("nav link routes to sources page", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: "Sources" }).click();
+    await expect(page).toHaveURL(/\/sources$/);
+    await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Upload drop zone" })).toBeVisible();
+  });
+
   test("active nav item is styled on current route", async ({ page }) => {
     await page.goto("/");
     const entities = page.getByRole("link", { name: "Entities" });
