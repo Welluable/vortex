@@ -12,6 +12,11 @@ export const spaceNavItems: SpaceNavItem[] = [
       pathname === `/spaces/${id}` || pathname === `/spaces/${id}/`,
   },
   {
+    label: "Sources",
+    href: (id) => `/spaces/${id}/sources`,
+    match: (pathname, id) => pathname.startsWith(`/spaces/${id}/sources`),
+  },
+  {
     label: "Entities",
     href: (id) => `/spaces/${id}/entities`,
     match: (pathname, id) => pathname.startsWith(`/spaces/${id}/entities`),
