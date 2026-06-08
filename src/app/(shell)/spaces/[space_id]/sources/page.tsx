@@ -1,13 +1,21 @@
 "use client";
 
+import { useEffect } from "react";
 import { BlankMain } from "@/components/shell/blank-main";
 import { UploadDropZone } from "@/components/upload/upload-drop-zone";
+import { showUploadToast } from "@/components/upload/show-upload-toast";
 import { FieldDescription } from "@/components/ui/field";
+import { useMockUpload } from "@/hooks/use-mock-upload";
 
 export default function SourcesPage() {
+  const { uploads, startUploads } = useMockUpload();
+
+  useEffect(() => {
+    uploads.forEach((upload) => showUploadToast(upload));
+  }, [uploads]);
+
   function onFilesSelected(files: File[]) {
-    // Slice 3 will wire mock uploads; no-op for Slice 2 checkpoint
-    console.debug("files selected", files.map((f) => f.name));
+    startUploads(files);
   }
 
   return (
