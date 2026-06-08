@@ -41,5 +41,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# local sqlite data (TECHNICAL.md §3)
+/data/
+
 playwright-report/
 test-results/
