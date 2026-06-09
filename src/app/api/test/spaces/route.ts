@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import {
   resetSpacesForTest,
   restoreSeedSpacesForTest,
-} from "@/lib/mock/spaces-store";
+} from "@/lib/spaces/store";
+
+export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   if (process.env.NODE_ENV === "production") {

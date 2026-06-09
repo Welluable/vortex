@@ -1,8 +1,16 @@
 import { openDatabase } from "@/db";
 import { spaces } from "@/db/schema/spaces";
+import { SpaceConflictError } from "@/lib/spaces/errors";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { count, eq } from "drizzle-orm";
-import type { Space, SpaceListResponse } from "@/types/spaces";
+import type { CreateSpaceRequest, Space, SpaceListResponse } from "@/types/spaces";
+
+function isSqliteUniqueViolation(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const code = "code" in err ? err.code : undefined;
+  const message = "message" in err && typeof err.message === "string" ? err.message : "";
+  return code === "SQLITE_CONSTRAINT_UNIQUE" || message.includes("UNIQUE constraint failed");
+}
 
 export const SEED_SPACES: Space[] = [
   {
@@ -56,4 +64,59 @@ export const spacesStore = {
     const row = drizzleDb.select().from(spaces).where(eq(spaces.id, id)).get();
     return row ? rowToSpace(row) : null;
   },
+
+  createSpace(input: CreateSpaceRequest): Space {
+    const { db } = openDatabase();
+    const drizzleDb = drizzle(db);
+    const now = Date.now();
+    const space: Space = {
+      id: crypto.randomUUID(),
+      name: input.name.trim(),
+      description: input.description?.trim() ?? null,
+      created_at: now,
+      updated_at: now,
+    };
+
+    try {
+      drizzleDb
+        .insert(spaces)
+        .values({
+          id: space.id,
+          name: space.name,
+          description: space.description,
+          created_at: space.created_at,
+          updated_at: space.updated_at,
+        })
+        .run();
+    } catch (err) {
+      if (isSqliteUniqueViolation(err)) throw new SpaceConflictError();
+      throw err;
+    }
+
+    return space;
+  },
 };
+
+export function resetSpacesForTest(): void {
+  const { db } = openDatabase();
+  const drizzleDb = drizzle(db);
+  drizzleDb.delete(spaces).run();
+}
+
+export function restoreSeedSpacesForTest(): void {
+  const { db } = openDatabase();
+  const drizzleDb = drizzle(db);
+  for (const seed of SEED_SPACES) {
+    drizzleDb
+      .insert(spaces)
+      .values({
+        id: seed.id,
+        name: seed.name,
+        description: seed.description,
+        created_at: seed.created_at,
+        updated_at: seed.updated_at,
+      })
+      .onConflictDoNothing()
+      .run();
+  }
+}
