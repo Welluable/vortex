@@ -8,6 +8,13 @@
       "when": 1780906204175,
       "tag": "0000_extensions_probe",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1780978967179,
+      "tag": "0001_outstanding_wasp",
+      "breakpoints": true
     }
   ]
 }
