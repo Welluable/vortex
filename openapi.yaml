@@ -101,6 +101,8 @@ paths:
                 $ref: "#/components/schemas/Space"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/spaces/{space_id}:
     parameters:
