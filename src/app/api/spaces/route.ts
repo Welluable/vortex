@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { spacesStore } from "@/lib/mock/spaces-store";
+import { spacesStore } from "@/lib/spaces/store";
 import type { CreateSpaceRequest } from "@/types/spaces";
+
+export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);

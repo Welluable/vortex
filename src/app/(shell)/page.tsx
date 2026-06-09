@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { spacesStore } from "@/lib/mock/spaces-store";
+import { spacesStore } from "@/lib/spaces/store";
 
 export default function HomeRedirect() {
   const { items } = spacesStore.listSpaces();
