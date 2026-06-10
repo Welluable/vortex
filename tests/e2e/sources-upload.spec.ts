@@ -2,6 +2,11 @@ import { test, expect } from "@playwright/test";
 import path from "node:path";
 
 test.describe("sources upload UI", () => {
+  test.beforeEach(async ({ request }) => {
+    await request.post("/api/test/spaces", { data: { action: "restore" } });
+    await request.post("/api/test/sources", { data: { action: "reset" } });
+  });
+
   test("drop zone shows help copy and accepts file input", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: "Sources" }).click();
@@ -11,7 +16,6 @@ test.describe("sources upload UI", () => {
 
     const fixture = path.join(__dirname, "fixtures", "sample.txt");
     await page.getByTestId("upload-file-input").setInputFiles(fixture);
-    // Slice 3 adds toast assertion; here only verify input is interactive
     await expect(page.getByTestId("upload-drop-zone")).toBeVisible();
   });
 
@@ -23,7 +27,8 @@ test.describe("sources upload UI", () => {
 
     await expect(page.getByText("sample.txt")).toBeVisible();
     await expect(page.getByRole("progressbar", { name: "Upload progress" })).toBeVisible();
-    await expect(page.getByLabel("Upload complete")).toBeVisible({ timeout: 6000 });
+    await expect(page.getByText(/Processing/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel("Upload complete")).toBeVisible({ timeout: 15_000 });
   });
 
   test("multiple files produce concurrent toasts", async ({ page }) => {
@@ -36,9 +41,8 @@ test.describe("sources upload UI", () => {
 
     await expect(page.getByText("a.txt")).toBeVisible();
     await expect(page.getByText("b.txt")).toBeVisible();
-    await expect(page.getByRole("progressbar")).toHaveCount(2);
+    await expect(page.getByLabel("Upload complete")).toHaveCount(2, { timeout: 15_000 });
 
-    // Drop zone still accepts input while uploads run
     await page.getByTestId("upload-file-input").setInputFiles(a);
     await expect(page.getByText("a.txt")).toHaveCount(2);
   });

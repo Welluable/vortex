@@ -12,6 +12,8 @@ async function resetHarness(request: import("@playwright/test").APIRequestContex
 }
 
 test.describe("sources API", () => {
+  test.describe.configure({ mode: "serial" });
+
   test.beforeEach(async ({ request }) => {
     await resetHarness(request);
   });
