@@ -17,6 +17,17 @@ export type SpaceListResponse = {
   pagination: PaginationMeta;
 };
 
+export type SpaceCounts = {
+  sources?: number;
+  entities?: number;
+  open_conflicts?: number;
+  pending_review?: number;
+};
+
+export type SpaceDetail = Space & {
+  counts?: SpaceCounts;
+};
+
 export type CreateSpaceRequest = {
   name: string;
   description?: string;

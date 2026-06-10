@@ -3,7 +3,7 @@ import { spaces } from "@/db/schema/spaces";
 import { SpaceConflictError } from "@/lib/spaces/errors";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { count, eq } from "drizzle-orm";
-import type { CreateSpaceRequest, Space, SpaceListResponse } from "@/types/spaces";
+import type { CreateSpaceRequest, Space, SpaceDetail, SpaceListResponse } from "@/types/spaces";
 
 function isSqliteUniqueViolation(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
@@ -63,6 +63,21 @@ export const spacesStore = {
     const drizzleDb = drizzle(db);
     const row = drizzleDb.select().from(spaces).where(eq(spaces.id, id)).get();
     return row ? rowToSpace(row) : null;
+  },
+
+  getSpaceDetail(id: string): SpaceDetail | null {
+    const space = this.getSpace(id);
+    if (!space) return null;
+    // Placeholder counts until sources/entities tables exist.
+    return {
+      ...space,
+      counts: {
+        sources: 0,
+        entities: 0,
+        open_conflicts: 0,
+        pending_review: 0,
+      },
+    };
   },
 
   createSpace(input: CreateSpaceRequest): Space {
