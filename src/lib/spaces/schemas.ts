@@ -21,3 +21,10 @@ export async function parseSpaceIdParam(
   if (!parsed.success) return { ok: false };
   return { ok: true, spaceId: parsed.data };
 }
+
+export const updateSpaceRequestSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  description: z.string().nullable().optional(),
+});
+
+export type ParsedUpdateSpaceRequest = z.infer<typeof updateSpaceRequestSchema>;

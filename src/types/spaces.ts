@@ -28,6 +28,11 @@ export type SpaceDetail = Space & {
   counts?: SpaceCounts;
 };
 
+export type UpdateSpaceRequest = {
+  name?: string;
+  description?: string | null;
+};
+
 export type CreateSpaceRequest = {
   name: string;
   description?: string;

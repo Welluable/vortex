@@ -3,7 +3,13 @@ import { spaces } from "@/db/schema/spaces";
 import { SpaceConflictError } from "@/lib/spaces/errors";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { count, eq } from "drizzle-orm";
-import type { CreateSpaceRequest, Space, SpaceDetail, SpaceListResponse } from "@/types/spaces";
+import type {
+  CreateSpaceRequest,
+  Space,
+  SpaceDetail,
+  SpaceListResponse,
+  UpdateSpaceRequest,
+} from "@/types/spaces";
 
 function isSqliteUniqueViolation(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
@@ -78,6 +84,35 @@ export const spacesStore = {
         pending_review: 0,
       },
     };
+  },
+
+  updateSpace(id: string, patch: UpdateSpaceRequest): Space | null {
+    const { db } = openDatabase();
+    const drizzleDb = drizzle(db);
+    const existing = drizzleDb.select().from(spaces).where(eq(spaces.id, id)).get();
+    if (!existing) return null;
+
+    const now = Date.now();
+    const updates: Partial<typeof spaces.$inferInsert> = { updated_at: now };
+
+    if ("name" in patch) {
+      updates.name = patch.name!.trim();
+    }
+    if ("description" in patch) {
+      const desc = patch.description;
+      updates.description =
+        desc === null ? null : (desc?.trim() ?? null) || null;
+    }
+
+    try {
+      drizzleDb.update(spaces).set(updates).where(eq(spaces.id, id)).run();
+    } catch (err) {
+      if (isSqliteUniqueViolation(err)) throw new SpaceConflictError();
+      throw err;
+    }
+
+    const row = drizzleDb.select().from(spaces).where(eq(spaces.id, id)).get();
+    return row ? rowToSpace(row) : null;
   },
 
   createSpace(input: CreateSpaceRequest): Space {
