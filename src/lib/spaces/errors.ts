@@ -1,12 +1,5 @@
-export type ApiErrorCode = "validation_error" | "conflict" | "not_found";
-
-export type ApiError = {
-  code: ApiErrorCode;
-  message: string;
-  details?: Record<string, unknown>;
-};
-
-export type ErrorResponse = { error: ApiError };
+export type { ApiErrorCode, ApiError, ErrorResponse } from "@/lib/api/errors";
+export { toErrorResponse } from "@/lib/api/errors";
 
 export class SpaceConflictError extends Error {
   readonly code = "conflict" as const;
@@ -14,12 +7,4 @@ export class SpaceConflictError extends Error {
     super(message);
     this.name = "SpaceConflictError";
   }
-}
-
-export function toErrorResponse(
-  code: ApiErrorCode,
-  message: string,
-  details?: Record<string, unknown>,
-): ErrorResponse {
-  return { error: { code, message, ...(details ? { details } : {}) } };
 }
