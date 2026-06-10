@@ -1,4 +1,4 @@
-export type ApiErrorCode = "validation_error" | "conflict";
+export type ApiErrorCode = "validation_error" | "conflict" | "not_found";
 
 export type ApiError = {
   code: ApiErrorCode;
