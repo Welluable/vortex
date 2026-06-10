@@ -1,5 +1,6 @@
 import { openDatabase } from "@/db";
 import { spaces } from "@/db/schema/spaces";
+import { sourcesStore } from "@/lib/sources/store";
 import { SpaceConflictError } from "@/lib/spaces/errors";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { count, eq } from "drizzle-orm";
@@ -74,11 +75,10 @@ export const spacesStore = {
   getSpaceDetail(id: string): SpaceDetail | null {
     const space = this.getSpace(id);
     if (!space) return null;
-    // Placeholder counts until sources/entities tables exist.
     return {
       ...space,
       counts: {
-        sources: 0,
+        sources: sourcesStore.countBySpace(id),
         entities: 0,
         open_conflicts: 0,
         pending_review: 0,
