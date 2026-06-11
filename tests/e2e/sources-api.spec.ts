@@ -111,7 +111,7 @@ test.describe("sources API", () => {
     expect((await res.json()).error.code).toBe("validation_error");
   });
 
-  test("upload then poll job completes ingest stub", async ({ request }) => {
+  test("upload then poll job completes ingest pipeline", async ({ request }) => {
     const uploadRes = await request.post(`/api/spaces/${SEED_SPACE_ID}/sources`, {
       multipart: {
         file: {
@@ -139,6 +139,26 @@ test.describe("sources API", () => {
     expect(job.ingest_run.stage).toBe("refresh");
     expect(job.ingest_run.progress_pct).toBe(100);
     expect(job.ingest_run.status).toBe("complete");
+    expect(job.ingest_run.extraction_path).toBeTruthy();
+    expect(job.ingest_run.summary_path).toBeTruthy();
+    expect(job.ingest_run.llm_model).toBe("mock");
+
+    const health = await (await request.get("/api/health")).json();
+    const extractionAbs = path.join(health.data_dir, job.ingest_run.extraction_path);
+    const summaryAbs = path.join(health.data_dir, job.ingest_run.summary_path);
+    expect(fs.existsSync(extractionAbs)).toBe(true);
+    expect(fs.existsSync(summaryAbs)).toBe(true);
+
+    const extraction = JSON.parse(fs.readFileSync(extractionAbs, "utf8"));
+    expect(extraction).toMatchObject({
+      summary: expect.any(String),
+      mentions: expect.any(Array),
+      candidate_facts: expect.any(Array),
+      decision_candidates: expect.any(Array),
+    });
+
+    const summaryMd = fs.readFileSync(summaryAbs, "utf8");
+    expect(summaryMd.startsWith("# Source summary")).toBe(true);
 
     const spaceRes = await request.get(`/api/spaces/${SEED_SPACE_ID}`);
     expect((await spaceRes.json()).counts.sources).toBe(1);

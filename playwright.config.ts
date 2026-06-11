@@ -10,5 +10,6 @@ export default defineConfig({
     command: 'pnpm dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
+    env: { INGEST_STRUCTURE_MOCK: '1' },
   },
 });
