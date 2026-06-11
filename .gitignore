@@ -44,5 +44,8 @@ next-env.d.ts
 # local sqlite data (TECHNICAL.md §3)
 /data/
 
+# local build tickets (not committed)
+.tickets/
+
 playwright-report/
 test-results/
