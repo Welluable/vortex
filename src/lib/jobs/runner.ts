@@ -20,7 +20,12 @@ export async function tickRunner(): Promise<void> {
     if (!job) return;
     jobsStore.markRunning(job.id, Date.now());
     if (job.job_type === "ingest_source") {
-      await handleIngestSource(job);
+      try {
+        await handleIngestSource(job);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        jobsStore.markFailed(job.id, Date.now(), message);
+      }
     } else {
       jobsStore.markFailed(job.id, Date.now(), "unknown job_type");
     }

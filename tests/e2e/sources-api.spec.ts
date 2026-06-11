@@ -163,4 +163,36 @@ test.describe("sources API", () => {
     const spaceRes = await request.get(`/api/spaces/${SEED_SPACE_ID}`);
     expect((await spaceRes.json()).counts.sources).toBe(1);
   });
+
+  test("upload oversize text (>48k chars) fails ingest with 48,000 message", async ({
+    request,
+  }) => {
+    const largeText = "a".repeat(48_001);
+    const uploadRes = await request.post(`/api/spaces/${SEED_SPACE_ID}/sources`, {
+      multipart: {
+        file: {
+          name: "large.txt",
+          mimeType: "text/plain",
+          buffer: Buffer.from(largeText, "utf8"),
+        },
+      },
+    });
+    expect(uploadRes.status()).toBe(202);
+    const { job_id } = await uploadRes.json();
+
+    await expect
+      .poll(
+        async () => {
+          const jobRes = await request.get(`/api/jobs/${job_id}`);
+          const job = await jobRes.json();
+          return job.status;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe("failed");
+
+    const job = await (await request.get(`/api/jobs/${job_id}`)).json();
+    expect(job.ingest_run.status).toBe("failed");
+    expect(job.ingest_run.error_message).toContain("48,000");
+  });
 });
