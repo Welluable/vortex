@@ -1,7 +1,7 @@
 "use client";
 
 import { toast } from "sonner";
-import type { MockUpload } from "@/hooks/use-mock-upload";
+import type { SourceUpload } from "@/hooks/use-source-upload";
 import {
   isUploadToastDismissed,
   markUploadToastDismissed,
@@ -9,10 +9,10 @@ import {
 } from "@/components/upload/upload-toast-state";
 import { UploadProgressToast } from "./upload-progress-toast";
 
-export function showUploadToast(upload: MockUpload) {
+export function showUploadToast(upload: SourceUpload) {
   if (isUploadToastDismissed(upload.id)) return;
 
-  const done = upload.status === "done";
+  const done = upload.phase === "done";
 
   return toast.custom(
     () => <UploadProgressToast upload={upload} />,

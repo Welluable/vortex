@@ -15,6 +15,13 @@
       "when": 1780978967179,
       "tag": "0001_outstanding_wasp",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1781097078898,
+      "tag": "0002_remarkable_payback",
+      "breakpoints": true
     }
   ]
 }

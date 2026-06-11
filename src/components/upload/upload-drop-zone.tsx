@@ -2,16 +2,19 @@
 
 import { useCallback, useRef, useState } from "react";
 import { Upload } from "lucide-react";
+import { validateUploadFile } from "@/lib/sources/validation";
 import { cn } from "@/lib/utils";
 
 export type UploadDropZoneProps = {
   onFilesSelected: (files: File[]) => void;
+  onValidationError?: (message: string) => void;
   accept?: string;
   disabled?: boolean;
 };
 
 export function UploadDropZone({
   onFilesSelected,
+  onValidationError,
   accept = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,image/*,application/pdf,text/plain,text/markdown",
   disabled = false,
 }: UploadDropZoneProps) {
@@ -25,9 +28,22 @@ export function UploadDropZone({
   const handleFiles = useCallback(
     (fileList: FileList | null) => {
       if (!fileList?.length || disabled) return;
-      onFilesSelected(Array.from(fileList));
+      const accepted: File[] = [];
+      for (const file of Array.from(fileList)) {
+        const result = validateUploadFile({
+          type: file.type,
+          size: file.size,
+          name: file.name,
+        });
+        if (!result.ok) {
+          onValidationError?.(result.message);
+        } else {
+          accepted.push(file);
+        }
+      }
+      if (accepted.length) onFilesSelected(accepted);
     },
-    [disabled, onFilesSelected],
+    [disabled, onFilesSelected, onValidationError],
   );
 
   return (
@@ -35,7 +51,10 @@ export function UploadDropZone({
       data-testid="upload-drop-zone"
       role="region"
       aria-label="Upload drop zone"
-      onDragEnter={(e) => { e.preventDefault(); setDragActive(true); }}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        setDragActive(true);
+      }}
       onDragOver={(e) => e.preventDefault()}
       onDragLeave={() => setDragActive(false)}
       onDrop={(e) => {

@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("space shell", () => {
+  test.beforeEach(async ({ request }, testInfo) => {
+    if (testInfo.title === "empty store redirects / to /spaces/new") return;
+    await request.post("/api/test/spaces", { data: { action: "restore" } });
+    await request.post("/api/test/sources", { data: { action: "reset" } });
+  });
+
   test("switcher shows seeded space name after redirect", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("button", { name: /Acme Corp/i })).toBeVisible();

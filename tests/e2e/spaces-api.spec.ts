@@ -1,14 +1,20 @@
 import { test, expect } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
 
 const SEED_SPACE_ID = "00000000-0000-4000-8000-000000000001";
 const SEED_SPACE_2_ID = "00000000-0000-4000-8000-000000000002";
+const FIXTURE_PATH = path.join(__dirname, "fixtures", "sample.txt");
 
 test.describe("spaces API", () => {
+  test.describe.configure({ mode: "serial" });
+
   test.beforeEach(async ({ request }) => {
     await request.post("/api/test/spaces", {
       headers: { "Content-Type": "application/json" },
       data: { action: "restore" },
     });
+    await request.post("/api/test/sources", { data: { action: "reset" } });
   });
 
   test("GET seed space returns SpaceDetail with zero counts", async ({ request }) => {
@@ -88,6 +94,22 @@ test.describe("spaces API", () => {
     );
     expect(res.status()).toBe(404);
     expect((await res.json()).error.code).toBe("not_found");
+  });
+
+  test("upload increments sources count in space detail", async ({ request }) => {
+    await request.post(`/api/spaces/${SEED_SPACE_ID}/sources`, {
+      multipart: {
+        file: {
+          name: "sample.txt",
+          mimeType: "text/plain",
+          buffer: fs.readFileSync(FIXTURE_PATH),
+        },
+      },
+    });
+
+    const res = await request.get(`/api/spaces/${SEED_SPACE_ID}`);
+    expect(res.status()).toBe(200);
+    expect((await res.json()).counts.sources).toBe(1);
   });
 
   test("PATCH empty object bumps updated_at only", async ({ request }) => {

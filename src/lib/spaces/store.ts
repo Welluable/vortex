@@ -1,5 +1,11 @@
+import fs from "node:fs";
+import path from "node:path";
 import { openDatabase } from "@/db";
+import { ingestRuns } from "@/db/schema/ingest-runs";
+import { jobs } from "@/db/schema/jobs";
+import { sources } from "@/db/schema/sources";
 import { spaces } from "@/db/schema/spaces";
+import { sourcesStore } from "@/lib/sources/store";
 import { SpaceConflictError } from "@/lib/spaces/errors";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { count, eq } from "drizzle-orm";
@@ -74,11 +80,10 @@ export const spacesStore = {
   getSpaceDetail(id: string): SpaceDetail | null {
     const space = this.getSpace(id);
     if (!space) return null;
-    // Placeholder counts until sources/entities tables exist.
     return {
       ...space,
       counts: {
-        sources: 0,
+        sources: sourcesStore.countBySpace(id),
         entities: 0,
         open_conflicts: 0,
         pending_review: 0,
@@ -148,9 +153,22 @@ export const spacesStore = {
 };
 
 export function resetSpacesForTest(): void {
-  const { db } = openDatabase();
+  const { db, dataDir } = openDatabase();
   const drizzleDb = drizzle(db);
+  drizzleDb.delete(jobs).run();
+  drizzleDb.delete(ingestRuns).run();
+  drizzleDb.delete(sources).run();
   drizzleDb.delete(spaces).run();
+
+  const spacesDir = path.join(dataDir, "spaces");
+  if (fs.existsSync(spacesDir)) {
+    for (const spaceId of fs.readdirSync(spacesDir)) {
+      const assetsDir = path.join(spacesDir, spaceId, "assets");
+      if (fs.existsSync(assetsDir)) {
+        fs.rmSync(assetsDir, { recursive: true, force: true });
+      }
+    }
+  }
 }
 
 export function restoreSeedSpacesForTest(): void {
@@ -166,7 +184,15 @@ export function restoreSeedSpacesForTest(): void {
         created_at: seed.created_at,
         updated_at: seed.updated_at,
       })
-      .onConflictDoNothing()
+      .onConflictDoUpdate({
+        target: spaces.id,
+        set: {
+          name: seed.name,
+          description: seed.description,
+          created_at: seed.created_at,
+          updated_at: seed.updated_at,
+        },
+      })
       .run();
   }
 }
