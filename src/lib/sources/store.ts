@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { openDatabase } from "@/db";
+import { chunks } from "@/db/schema/chunks";
 import { ingestRuns } from "@/db/schema/ingest-runs";
 import { jobs } from "@/db/schema/jobs";
 import { sources } from "@/db/schema/sources";
@@ -159,6 +160,7 @@ export function resetSourcesForTest(): void {
   const seedIds = SEED_SPACES.map((s) => s.id);
 
   drizzleDb.delete(jobs).where(inArray(jobs.space_id, seedIds)).run();
+  drizzleDb.delete(chunks).where(inArray(chunks.space_id, seedIds)).run();
   drizzleDb.delete(ingestRuns).where(inArray(ingestRuns.space_id, seedIds)).run();
   drizzleDb.delete(sources).where(inArray(sources.space_id, seedIds)).run();
 

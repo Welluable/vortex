@@ -19,6 +19,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
+    "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "postinstall": "playwright install chromium"
   },
@@ -54,6 +55,7 @@
     "node-gyp": "^12.4.0",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   }
 }
