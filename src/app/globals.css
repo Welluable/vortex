@@ -128,3 +128,11 @@
     @apply font-sans;
   }
 }
+
+@utility cn-toast {
+  @apply flex w-80 max-w-80 items-center gap-1.5 rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-lg;
+}
+
+@utility cn-upload-toast {
+  @apply flex-col items-stretch gap-0 overflow-hidden p-3;
+}

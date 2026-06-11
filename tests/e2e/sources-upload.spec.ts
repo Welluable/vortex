@@ -24,6 +24,33 @@ test.describe("sources upload UI", () => {
     await expect(page.getByText("sample.txt")).toBeVisible();
     await expect(page.getByRole("progressbar", { name: "Upload progress" })).toBeVisible();
     await expect(page.getByLabel("Upload complete")).toBeVisible({ timeout: 6000 });
+    await expect(page.getByRole("button", { name: "Dismiss upload" })).toBeVisible();
+  });
+
+  test("completed upload toast auto dismisses after 3 seconds", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: "Sources" }).click();
+    const fixture = path.join(__dirname, "fixtures", "sample.txt");
+    await page.getByTestId("upload-file-input").setInputFiles(fixture);
+
+    await expect(page.getByLabel("Upload complete")).toBeVisible({ timeout: 6000 });
+    await expect(page.getByText("sample.txt")).not.toBeVisible({ timeout: 4000 });
+  });
+
+  test("dismissed upload toast does not reappear on new upload", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: "Sources" }).click();
+    const fixture = path.join(__dirname, "fixtures", "sample.txt");
+    await page.getByTestId("upload-file-input").setInputFiles(fixture);
+
+    await expect(page.getByLabel("Upload complete")).toBeVisible({ timeout: 6000 });
+    await page.getByRole("button", { name: "Dismiss upload" }).click();
+    await expect(page.getByText("sample.txt")).not.toBeVisible();
+
+    const another = path.join(__dirname, "fixtures", "a.txt");
+    await page.getByTestId("upload-file-input").setInputFiles(another);
+    await expect(page.getByText("a.txt")).toBeVisible();
+    await expect(page.getByText("sample.txt")).not.toBeVisible();
   });
 
   test("multiple files produce concurrent toasts", async ({ page }) => {
