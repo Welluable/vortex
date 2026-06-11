@@ -7,6 +7,7 @@ import { SEED_SPACES } from "@/lib/spaces/store";
 import type { Source, UploadSourceResponse } from "@/types/sources";
 import { and, count, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { RequestLog } from "@/lib/api/request-log";
 import { writeSourceAsset } from "./asset-writer";
 import { assetDir, spaceAssetsDir } from "./paths";
 
@@ -39,14 +40,20 @@ export const sourcesStore = {
     return total;
   },
 
-  async uploadSource(spaceId: string, file: File): Promise<UploadSourceResponse> {
+  async uploadSource(
+    spaceId: string,
+    file: File,
+    log?: RequestLog,
+  ): Promise<UploadSourceResponse> {
     const { db, dataDir } = openDatabase();
+    log?.step("database opened");
     const drizzleDb = drizzle(db);
     const sourceId = crypto.randomUUID();
     const ingestRunId = crypto.randomUUID();
     const jobId = crypto.randomUUID();
     const now = Date.now();
 
+    log?.step("writeSourceAsset starting", { sourceId });
     const { sha256, asset_path, manifest } = await writeSourceAsset({
       dataDir,
       spaceId,
@@ -54,9 +61,15 @@ export const sourcesStore = {
       file,
       mimeType: file.type,
       originalFilename: file.name,
+      log,
+    });
+    log?.step("writeSourceAsset complete", {
+      sourceId,
+      byteSize: manifest.byte_size,
     });
 
     try {
+      log?.step("database transaction starting", { sourceId, jobId });
       drizzleDb.transaction((tx) => {
         tx.insert(sources)
           .values({
@@ -119,7 +132,12 @@ export const sourcesStore = {
           .where(eq(sources.id, sourceId))
           .run();
       });
+      log?.step("database transaction complete", { sourceId, jobId });
     } catch (err) {
+      log?.step("database transaction failed", {
+        sourceId,
+        error: err instanceof Error ? err.message : String(err),
+      });
       fs.rmSync(assetDir(dataDir, spaceId, sourceId), { recursive: true, force: true });
       throw err;
     }

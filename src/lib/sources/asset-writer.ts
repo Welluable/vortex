@@ -4,6 +4,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { Transform } from "node:stream";
+import type { RequestLog } from "@/lib/api/request-log";
 import {
   assetDir,
   deriveExtension,
@@ -19,8 +20,9 @@ export async function writeSourceAsset(args: {
   file: File | (Blob & { stream(): ReadableStream });
   mimeType: string;
   originalFilename: string;
+  log?: RequestLog;
 }): Promise<{ sha256: string; asset_path: string; manifest: AssetManifest }> {
-  const { dataDir, spaceId, sourceId, file, mimeType, originalFilename } = args;
+  const { dataDir, spaceId, sourceId, file, mimeType, originalFilename, log } = args;
   const ext = deriveExtension(originalFilename);
   const dir = assetDir(dataDir, spaceId, sourceId);
   fs.mkdirSync(dir, { recursive: true });
@@ -37,11 +39,13 @@ export async function writeSourceAsset(args: {
     },
   });
 
+  log?.step("asset pipeline starting", { path: originalFilePath });
   await pipeline(
     Readable.fromWeb(file.stream() as import("stream/web").ReadableStream),
     hashTransform,
     fs.createWriteStream(originalFilePath),
   );
+  log?.step("asset pipeline complete", { byteSize });
 
   const uploadedAt = Date.now();
   const manifest: AssetManifest = {
